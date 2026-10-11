@@ -38,9 +38,6 @@ struct GuardMask {
 
 struct guard_filter {
 	obs_source_t *source = nullptr;
-	obs_hotkey_id hotkey = OBS_INVALID_HOTKEY_ID;
-	obs_hotkey_id hotkey_add = OBS_INVALID_HOTKEY_ID;
-	obs_hotkey_id hotkey_remove = OBS_INVALID_HOTKEY_ID;
 	pthread_mutex_t mutex;
 	gs_effect_t *blur_effect = nullptr; // создается под graphics-мьютексом
 
@@ -84,3 +81,7 @@ void guard_filter_tick(void *data, float seconds);
 void guard_filter_render(void *data, gs_effect_t *effect);
 void guard_filter_save(void *data, obs_data_t *settings);
 void guard_filter_load(void *data, obs_data_t *settings);
+
+// Глобальные действия для фронтенд-хоткеев (все инстансы сразу).
+void guard_toggle_all();
+void guard_fg_all(bool add);

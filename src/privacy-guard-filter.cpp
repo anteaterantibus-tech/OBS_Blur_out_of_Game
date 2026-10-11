@@ -23,6 +23,51 @@
 #include <util/base.h>
 #include <util/platform.h>
 
+// Фильтрам OBS запрещены собственные хоткеи (private sources),
+// поэтому клавиши общие на модуль и действуют на все фильтры сразу.
+static pthread_mutex_t g_instances_mutex = PTHREAD_MUTEX_INITIALIZER;
+static std::vector<guard_filter *> g_instances;
+
+static void toggle_hotkey_cb(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey, bool pressed);
+static void fg_hotkey_cb(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey, bool pressed, bool add);
+
+void guard_instances_add(guard_filter *gf)
+{
+	pthread_mutex_lock(&g_instances_mutex);
+	g_instances.push_back(gf);
+	pthread_mutex_unlock(&g_instances_mutex);
+}
+
+void guard_instances_remove(guard_filter *gf)
+{
+	pthread_mutex_lock(&g_instances_mutex);
+	for (size_t i = 0; i < g_instances.size();) {
+		if (g_instances[i] == gf)
+			g_instances.erase(g_instances.begin() + i);
+		else
+			i++;
+	}
+	pthread_mutex_unlock(&g_instances_mutex);
+}
+
+void guard_toggle_all()
+{
+	pthread_mutex_lock(&g_instances_mutex);
+	std::vector<guard_filter *> copy = g_instances;
+	pthread_mutex_unlock(&g_instances_mutex);
+	for (size_t i = 0; i < copy.size(); i++)
+		toggle_hotkey_cb(copy[i], OBS_INVALID_HOTKEY_ID, nullptr, true);
+}
+
+void guard_fg_all(bool add)
+{
+	pthread_mutex_lock(&g_instances_mutex);
+	std::vector<guard_filter *> copy = g_instances;
+	pthread_mutex_unlock(&g_instances_mutex);
+	for (size_t i = 0; i < copy.size(); i++)
+		fg_hotkey_cb(copy[i], OBS_INVALID_HOTKEY_ID, nullptr, true, add);
+}
+
 #include <cstring>
 #include <algorithm>
 #include <string>
@@ -482,6 +527,8 @@ static void guard_apply_focus_locked(guard_filter *gf, bool focused, bool api_ok
 	}
 }
 
+static void toggle_hotkey_cb(void *data, obs_hotkey_id /*id*/, obs_hotkey_t * /*hotkey*/, bool pressed);
+
 static void toggle_hotkey_cb(void *data, obs_hotkey_id /*id*/, obs_hotkey_t * /*hotkey*/, bool pressed)
 {
 	if (!pressed || !data)
@@ -528,16 +575,6 @@ static void fg_hotkey_cb(void *data, obs_hotkey_id /*id*/, obs_hotkey_t * /*hotk
 	blog(LOG_INFO, "[obs-privacy-guard] hotkey %s: %s", add ? "added" : "removed", exe.c_str());
 }
 
-static void addfg_hotkey_cb(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey, bool pressed)
-{
-	fg_hotkey_cb(data, id, hotkey, pressed, true);
-}
-
-static void rmfg_hotkey_cb(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey, bool pressed)
-{
-	fg_hotkey_cb(data, id, hotkey, pressed, false);
-}
-
 static gs_effect_t *load_blur_effect()
 {
 	char *full = obs_module_file(BLUR_EFFECT_FILE);
@@ -571,16 +608,9 @@ void *guard_filter_create(obs_data_t *settings, obs_source_t *source)
 	pthread_mutex_init(&gf->mutex, nullptr);
 	vec4_from_rgba(&gf->shutter_color, 0xFF000000);
 
-	gf->hotkey = obs_hotkey_register_source(source, "ObsPrivacyGuard.Toggle",
-						obs_module_text("Hotkey_Toggle"), toggle_hotkey_cb, gf);
-	gf->hotkey_add = obs_hotkey_register_source(source, "ObsPrivacyGuard.AddFg",
-						    obs_module_text("Hotkey_AddFg"), addfg_hotkey_cb, gf);
-	gf->hotkey_remove = obs_hotkey_register_source(source, "ObsPrivacyGuard.RemoveFg",
-						       obs_module_text("Hotkey_RemoveFg"), rmfg_hotkey_cb,
-						       gf);
-	blog(LOG_INFO,
-	     "[obs-privacy-guard] hotkeys registered: toggle=%d add=%d remove=%d (invalid=%d)",
-	     (int)gf->hotkey, (int)gf->hotkey_add, (int)gf->hotkey_remove, (int)OBS_INVALID_HOTKEY_ID);
+	// Клавиши регистрируются глобально на модуль (см. plugin-main):
+	// фильтрам OBS свои хоткеи запрещены. Здесь только учет инстанса.
+	guard_instances_add(gf);
 
 	guard_filter_update(gf, settings);
 	gf->blur_effect = load_blur_effect();
@@ -600,18 +630,7 @@ void guard_filter_destroy(void *data)
 	guard_filter *gf = static_cast<guard_filter *>(data);
 	if (!gf)
 		return;
-	if (gf->hotkey != OBS_INVALID_HOTKEY_ID) {
-		obs_hotkey_unregister(gf->hotkey);
-		gf->hotkey = OBS_INVALID_HOTKEY_ID;
-	}
-	if (gf->hotkey_add != OBS_INVALID_HOTKEY_ID) {
-		obs_hotkey_unregister(gf->hotkey_add);
-		gf->hotkey_add = OBS_INVALID_HOTKEY_ID;
-	}
-	if (gf->hotkey_remove != OBS_INVALID_HOTKEY_ID) {
-		obs_hotkey_unregister(gf->hotkey_remove);
-		gf->hotkey_remove = OBS_INVALID_HOTKEY_ID;
-	}
+	guard_instances_remove(gf);
 	if (gf->blur_effect) {
 		obs_enter_graphics();
 		gs_effect_destroy(gf->blur_effect);
@@ -1122,56 +1141,14 @@ void guard_filter_render(void *data, gs_effect_t * /*effect*/)
 
 void guard_filter_save(void *data, obs_data_t *settings)
 {
-	guard_filter *gf = static_cast<guard_filter *>(data);
-	if (!gf)
-		return;
-	if (gf->hotkey != OBS_INVALID_HOTKEY_ID) {
-		obs_data_array_t *arr = obs_hotkey_save(gf->hotkey);
-		if (arr) {
-			obs_data_set_array(settings, "toggle_hotkey", arr);
-			obs_data_array_release(arr);
-		}
-	}
-	if (gf->hotkey_add != OBS_INVALID_HOTKEY_ID) {
-		obs_data_array_t *arr = obs_hotkey_save(gf->hotkey_add);
-		if (arr) {
-			obs_data_set_array(settings, "addfg_hotkey", arr);
-			obs_data_array_release(arr);
-		}
-	}
-	if (gf->hotkey_remove != OBS_INVALID_HOTKEY_ID) {
-		obs_data_array_t *arr = obs_hotkey_save(gf->hotkey_remove);
-		if (arr) {
-			obs_data_set_array(settings, "rmfg_hotkey", arr);
-			obs_data_array_release(arr);
-		}
-	}
+	// Фронтенд-хоткеи сохраняет сам OBS в глобальный конфиг.
+	(void)data;
+	(void)settings;
 }
 
 void guard_filter_load(void *data, obs_data_t *settings)
 {
-	guard_filter *gf = static_cast<guard_filter *>(data);
-	if (!gf)
-		return;
-	if (gf->hotkey != OBS_INVALID_HOTKEY_ID) {
-		obs_data_array_t *arr = obs_data_get_array(settings, "toggle_hotkey");
-		if (arr) {
-			obs_hotkey_load(gf->hotkey, arr);
-			obs_data_array_release(arr);
-		}
-	}
-	if (gf->hotkey_add != OBS_INVALID_HOTKEY_ID) {
-		obs_data_array_t *arr = obs_data_get_array(settings, "addfg_hotkey");
-		if (arr) {
-			obs_hotkey_load(gf->hotkey_add, arr);
-			obs_data_array_release(arr);
-		}
-	}
-	if (gf->hotkey_remove != OBS_INVALID_HOTKEY_ID) {
-		obs_data_array_t *arr = obs_data_get_array(settings, "rmfg_hotkey");
-		if (arr) {
-			obs_hotkey_load(gf->hotkey_remove, arr);
-			obs_data_array_release(arr);
-		}
-	}
+	// Фронтенд-хоткеи загружает сам OBS из глобального конфига.
+	(void)data;
+	(void)settings;
 }

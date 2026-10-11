@@ -10,6 +10,28 @@ OBS_MODULE_AUTHOR("Privacy Guard");
 
 static struct obs_source_info guard_filter_info = {};
 
+static obs_hotkey_id hotkey_toggle = OBS_INVALID_HOTKEY_ID;
+static obs_hotkey_id hotkey_add = OBS_INVALID_HOTKEY_ID;
+static obs_hotkey_id hotkey_remove = OBS_INVALID_HOTKEY_ID;
+
+static void on_toggle_hotkey(void *, obs_hotkey_id, obs_hotkey_t *, bool pressed)
+{
+	if (pressed)
+		guard_toggle_all();
+}
+
+static void on_add_hotkey(void *, obs_hotkey_id, obs_hotkey_t *, bool pressed)
+{
+	if (pressed)
+		guard_fg_all(true);
+}
+
+static void on_remove_hotkey(void *, obs_hotkey_id, obs_hotkey_t *, bool pressed)
+{
+	if (pressed)
+		guard_fg_all(false);
+}
+
 bool obs_module_load(void)
 {
 	memset(&guard_filter_info, 0, sizeof(guard_filter_info));
@@ -30,11 +52,29 @@ bool obs_module_load(void)
 
 	obs_register_source(&guard_filter_info);
 
-	blog(LOG_INFO, "[obs-privacy-guard] loaded (version %s)", "0.8.6");
+	// Фронтенд-клавиши (видны в настройках всегда): фильтрам свои запрещены.
+	hotkey_toggle = obs_hotkey_register_frontend("ObsPrivacyGuard.Toggle",
+						     obs_module_text("Hotkey_Toggle"), on_toggle_hotkey, nullptr);
+	hotkey_add = obs_hotkey_register_frontend("ObsPrivacyGuard.AddFg", obs_module_text("Hotkey_AddFg"),
+						  on_add_hotkey, nullptr);
+	hotkey_remove = obs_hotkey_register_frontend("ObsPrivacyGuard.RemoveFg",
+						     obs_module_text("Hotkey_RemoveFg"), on_remove_hotkey,
+						     nullptr);
+	blog(LOG_INFO, "[obs-privacy-guard] hotkeys registered: toggle=%d add=%d remove=%d (invalid=%d)",
+	     (int)hotkey_toggle, (int)hotkey_add, (int)hotkey_remove, (int)OBS_INVALID_HOTKEY_ID);
+
+	blog(LOG_INFO, "[obs-privacy-guard] loaded (version %s)", "0.9.0");
 	return true;
 }
 
 void obs_module_unload(void)
 {
+	if (hotkey_toggle != OBS_INVALID_HOTKEY_ID)
+		obs_hotkey_unregister(hotkey_toggle);
+	if (hotkey_add != OBS_INVALID_HOTKEY_ID)
+		obs_hotkey_unregister(hotkey_add);
+	if (hotkey_remove != OBS_INVALID_HOTKEY_ID)
+		obs_hotkey_unregister(hotkey_remove);
+	hotkey_toggle = hotkey_add = hotkey_remove = OBS_INVALID_HOTKEY_ID;
 	blog(LOG_INFO, "[obs-privacy-guard] unloaded");
 }
