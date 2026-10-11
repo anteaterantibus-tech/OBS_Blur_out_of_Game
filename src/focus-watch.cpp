@@ -184,6 +184,11 @@ FocusQuery query_game_focus(const std::vector<std::string> &targets, bool allow_
 		if (exists)
 			q.process_exists = true;
 		if (!fg_exe.empty() && fg_exe == w) {
+			// Окна самого OBS шторку не открывают никогда: иначе клик
+			// по OBS показывал бы карту. Легитимный случай (клик по OBS
+			// при видимой игре) покрывает правило видимости.
+			if (is_obs_exe(fg_exe))
+				continue;
 			q.focused = true;
 			q.process_exists = true;
 		}

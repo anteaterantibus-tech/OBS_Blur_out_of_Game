@@ -348,17 +348,21 @@ static bool add_dir_button_cb(obs_properties_t * /*props*/, obs_property_t * /*p
 	return true;
 }
 
-static void show_fg_hint()
+static void show_info_box(const char *text_utf8)
 {
-	const char *msg = obs_module_text("Prop_AddFg_Hint");
 	const char *cap = obs_module_text("FilterName");
 	wchar_t wmsg[512] = {0};
 	wchar_t wcap[128] = {0};
-	if (msg)
-		MultiByteToWideChar(CP_UTF8, 0, msg, -1, wmsg, 512);
+	if (text_utf8)
+		MultiByteToWideChar(CP_UTF8, 0, text_utf8, -1, wmsg, 512);
 	if (cap)
 		MultiByteToWideChar(CP_UTF8, 0, cap, -1, wcap, 128);
 	MessageBoxW(nullptr, wmsg, wcap, MB_OK | MB_ICONINFORMATION);
+}
+
+static void show_fg_hint()
+{
+	show_info_box(obs_module_text("Prop_AddFg_Hint"));
 }
 
 static bool last_fg_name(guard_filter *gf, std::string &exe)
@@ -385,6 +389,9 @@ static bool add_fg_button_cb(obs_properties_t * /*props*/, obs_property_t * /*pr
 	std::vector<std::string> one;
 	one.push_back(exe);
 	add_names_live(gf, SETTING_PROCESS_LIST, "\n", one, true);
+	char done[256];
+	snprintf(done, sizeof(done), obs_module_text("Prop_AddedFmt"), exe.c_str());
+	show_info_box(done);
 	return true;
 }
 
@@ -399,6 +406,9 @@ static bool remove_fg_button_cb(obs_properties_t * /*props*/, obs_property_t * /
 	std::vector<std::string> one;
 	one.push_back(exe);
 	add_names_live(gf, SETTING_PROCESS_LIST, "\n", one, false);
+	char done[256];
+	snprintf(done, sizeof(done), obs_module_text("Prop_RemovedFmt"), exe.c_str());
+	show_info_box(done);
 	return true;
 }
 #endif
