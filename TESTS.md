@@ -102,6 +102,8 @@
 
 19. **Deny-список (0.7.2)**: живой замер только чтением. FG=LockApp.exe на весь экран 1920x1080: без deny эвристика срабатывает (focused=1), с deny={LockApp.exe} молчит (0 0). Видимость на том же мониторе дает 0. Кейс пользователя (полноэкранное видео в браузере) закрыт тем же механизмом.
 
+20. **Visibility only for listed games (0.7.5)**: the visibility rule fired on ANY fullscreen window (user log showed visible=1 with no game running), which kept a denied browser open. Now only listed games count. Verified read-only: maximized browser.exe gives all zeros; a stale-test-binary confusion during testing was caught and fixed.
+
 ## NOT RUN (не выполнены)
 
 - Alt+Tab и быстрые переключения туда-обратно (покрыты частично фазами B/C).
