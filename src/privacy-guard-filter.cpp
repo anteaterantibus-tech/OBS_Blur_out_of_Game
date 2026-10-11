@@ -200,7 +200,9 @@ static std::string wide_to_utf8_str(const wchar_t *ws)
 }
 
 // Дописать имена в живой список источника сразу (кнопка работает в потоке UI).
-static void add_names_live(guard_filter *gf, const char *key, const char *sep, const std::vector<std::string> &names)
+// При add=false наоборот убрать их из списка.
+static void add_names_live(guard_filter *gf, const char *key, const char *sep,
+			   const std::vector<std::string> &names, bool add)
 {
 	if (!gf || !gf->source || !key || names.empty())
 		return;
@@ -208,8 +210,19 @@ static void add_names_live(guard_filter *gf, const char *key, const char *sep, c
 	if (!cur)
 		return;
 	std::vector<std::string> list = parse_exe_list(obs_data_get_string(cur, key));
-	for (size_t i = 0; i < names.size(); i++)
-		push_unique(list, names[i]);
+	for (size_t i = 0; i < names.size(); i++) {
+		if (add) {
+			push_unique(list, names[i]);
+			continue;
+		}
+		std::string low = lower_ascii_str(names[i]);
+		for (size_t j = 0; j < list.size();) {
+			if (lower_ascii_str(list[j]) == low)
+				list.erase(list.begin() + j);
+			else
+				j++;
+		}
+	}
 	std::string merged;
 	for (size_t i = 0; i < list.size(); i++) {
 		if (i > 0)
@@ -256,7 +269,7 @@ static bool add_exe_button_cb(obs_properties_t * /*props*/, obs_property_t * /*p
 			p += wcslen(p) + 1;
 		}
 	}
-	add_names_live(gf, SETTING_PROCESS_LIST, NL_SEP, names);
+	add_names_live(gf, SETTING_PROCESS_LIST, NL_SEP, names, true);
 	return true;
 }
 
@@ -299,7 +312,7 @@ static bool add_deny_button_cb(obs_properties_t *, obs_property_t *, void *data)
 	std::vector<std::string> names;
 	if (!pick_exe_files(names, "Prop_AddDeny_Title"))
 		return true;
-	add_names_live(gf, SETTING_FULLSCREEN_DENY, NL_SEP, names);
+	add_names_live(gf, SETTING_FULLSCREEN_DENY, NL_SEP, names, true);
 	return true;
 }
 
@@ -331,36 +344,61 @@ static bool add_dir_button_cb(obs_properties_t * /*props*/, obs_property_t * /*p
 	if (!got || !path[0])
 		return true;
 	std::vector<std::string> found = privacy_guard::scan_games_folder(wide_to_utf8_str(path), 3);
-	add_names_live(gf, SETTING_PROCESS_LIST, "\n", found);
+	add_names_live(gf, SETTING_PROCESS_LIST, "\n", found, true);
+	return true;
+}
+
+static void show_fg_hint()
+{
+	const char *msg = obs_module_text("Prop_AddFg_Hint");
+	const char *cap = obs_module_text("FilterName");
+	wchar_t wmsg[512] = {0};
+	wchar_t wcap[128] = {0};
+	if (msg)
+		MultiByteToWideChar(CP_UTF8, 0, msg, -1, wmsg, 512);
+	if (cap)
+		MultiByteToWideChar(CP_UTF8, 0, cap, -1, wcap, 128);
+	MessageBoxW(nullptr, wmsg, wcap, MB_OK | MB_ICONINFORMATION);
+}
+
+static bool last_fg_name(guard_filter *gf, std::string &exe)
+{
+	if (!gf)
+		return false;
+	pthread_mutex_lock(&gf->mutex);
+	exe = gf->last_fg_exe;
+	uint64_t when = gf->last_fg_ns;
+	pthread_mutex_unlock(&gf->mutex);
+	if (exe.empty() || os_gettime_ns() - when > 120000000000ULL)
+		return false;
 	return true;
 }
 
 static bool add_fg_button_cb(obs_properties_t * /*props*/, obs_property_t * /*prop*/, void *data)
 {
 	guard_filter *gf = static_cast<guard_filter *>(data);
-	if (!gf)
-		return true;
-	// В момент нажатия фокус всегда на самом диалоге, поэтому берем
-	// последнее окно, где был фокус до открытия свойств (не старше 2 минут).
-	pthread_mutex_lock(&gf->mutex);
-	std::string exe = gf->last_fg_exe;
-	uint64_t when = gf->last_fg_ns;
-	pthread_mutex_unlock(&gf->mutex);
-	if (exe.empty() || os_gettime_ns() - when > 120000000000ULL) {
-		const char *msg = obs_module_text("Prop_AddFg_Hint");
-		const char *cap = obs_module_text("FilterName");
-		wchar_t wmsg[512] = {0};
-		wchar_t wcap[128] = {0};
-		if (msg)
-			MultiByteToWideChar(CP_UTF8, 0, msg, -1, wmsg, 512);
-		if (cap)
-			MultiByteToWideChar(CP_UTF8, 0, cap, -1, wcap, 128);
-		MessageBoxW(nullptr, wmsg, wcap, MB_OK | MB_ICONINFORMATION);
+	std::string exe;
+	if (!last_fg_name(gf, exe)) {
+		show_fg_hint();
 		return true;
 	}
 	std::vector<std::string> one;
 	one.push_back(exe);
-	add_names_live(gf, SETTING_PROCESS_LIST, "\n", one);
+	add_names_live(gf, SETTING_PROCESS_LIST, "\n", one, true);
+	return true;
+}
+
+static bool remove_fg_button_cb(obs_properties_t * /*props*/, obs_property_t * /*prop*/, void *data)
+{
+	guard_filter *gf = static_cast<guard_filter *>(data);
+	std::string exe;
+	if (!last_fg_name(gf, exe)) {
+		show_fg_hint();
+		return true;
+	}
+	std::vector<std::string> one;
+	one.push_back(exe);
+	add_names_live(gf, SETTING_PROCESS_LIST, "\n", one, false);
 	return true;
 }
 #endif
@@ -677,6 +715,8 @@ obs_properties_t *guard_filter_properties(void *data)
 					 add_dir_button_cb, data);
 	(void)obs_properties_add_button2(props, "add_fg_button", obs_module_text("Prop_AddFg"),
 					 add_fg_button_cb, data);
+	(void)obs_properties_add_button2(props, "remove_fg_button", obs_module_text("Prop_RemoveFg"),
+					 remove_fg_button_cb, data);
 #endif
 	(void)obs_properties_add_bool(props, SETTING_AUTO_ENABLED, obs_module_text("Prop_AutoEnabled"));
 	obs_property_t *fsprop = obs_properties_add_bool(props, SETTING_ALLOW_FULLSCREEN,
