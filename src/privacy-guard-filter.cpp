@@ -334,6 +334,20 @@ static bool add_dir_button_cb(obs_properties_t * /*props*/, obs_property_t * /*p
 	add_names_live(gf, SETTING_PROCESS_LIST, "\n", found);
 	return true;
 }
+
+static bool add_fg_button_cb(obs_properties_t * /*props*/, obs_property_t * /*prop*/, void *data)
+{
+	guard_filter *gf = static_cast<guard_filter *>(data);
+	if (!gf)
+		return true;
+	std::string exe = privacy_guard::foreground_exe();
+	if (exe.empty())
+		return true;
+	std::vector<std::string> one;
+	one.push_back(exe);
+	add_names_live(gf, SETTING_PROCESS_LIST, "\n", one);
+	return true;
+}
 #endif
 
 static const char *state_name(GuardState st)
@@ -646,6 +660,8 @@ obs_properties_t *guard_filter_properties(void *data)
 					 add_exe_button_cb, data);
 	(void)obs_properties_add_button2(props, "add_dir_button", obs_module_text("Prop_AddDir"),
 					 add_dir_button_cb, data);
+	(void)obs_properties_add_button2(props, "add_fg_button", obs_module_text("Prop_AddFg"),
+					 add_fg_button_cb, data);
 #endif
 	(void)obs_properties_add_bool(props, SETTING_AUTO_ENABLED, obs_module_text("Prop_AutoEnabled"));
 	obs_property_t *fsprop = obs_properties_add_bool(props, SETTING_ALLOW_FULLSCREEN,

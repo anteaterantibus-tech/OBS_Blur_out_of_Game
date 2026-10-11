@@ -272,6 +272,23 @@ bool game_visible_elsewhere(const std::vector<std::string> &targets,
 	return probe.found;
 }
 
-
+std::string foreground_exe()
+{
+	HWND fg = GetForegroundWindow();
+	if (!fg)
+		return std::string();
+	DWORD pid = 0;
+	if (!GetWindowThreadProcessId(fg, &pid) || pid == 0)
+		return std::string();
+	std::wstring w = process_image_name(pid);
+	if (w.empty())
+		return std::string();
+	int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
+	if (n <= 1)
+		return std::string();
+	std::string out((size_t)n - 1, 0);
+	WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, &out[0], n, nullptr, nullptr);
+	return out;
+}
 
 } // namespace privacy_guard

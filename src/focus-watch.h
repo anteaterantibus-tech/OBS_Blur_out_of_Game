@@ -45,4 +45,8 @@ inline FocusQuery query_game_focus(const char *target_exe)
 	return query_game_focus(one, false);
 }
 
+// Имя EXE активного окна (только имя файла, нижний регистр).
+// Пустая строка, если определить не удалось. Только чтение.
+std::string foreground_exe();
+
 } // namespace privacy_guard
