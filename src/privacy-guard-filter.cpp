@@ -382,7 +382,9 @@ static bool add_fg_button_cb(obs_properties_t * /*props*/, obs_property_t * /*pr
 {
 	guard_filter *gf = static_cast<guard_filter *>(data);
 	std::string exe;
-	if (!last_fg_name(gf, exe)) {
+	bool fresh = last_fg_name(gf, exe);
+	blog(LOG_INFO, "[obs-privacy-guard] add button: fresh=%d exe='%s'", (int)fresh, exe.c_str());
+	if (!fresh) {
 		show_fg_hint();
 		return true;
 	}
@@ -399,7 +401,9 @@ static bool remove_fg_button_cb(obs_properties_t * /*props*/, obs_property_t * /
 {
 	guard_filter *gf = static_cast<guard_filter *>(data);
 	std::string exe;
-	if (!last_fg_name(gf, exe)) {
+	bool fresh = last_fg_name(gf, exe);
+	blog(LOG_INFO, "[obs-privacy-guard] remove button: fresh=%d exe='%s'", (int)fresh, exe.c_str());
+	if (!fresh) {
 		show_fg_hint();
 		return true;
 	}
@@ -574,6 +578,9 @@ void *guard_filter_create(obs_data_t *settings, obs_source_t *source)
 	gf->hotkey_remove = obs_hotkey_register_source(source, "ObsPrivacyGuard.RemoveFg",
 						       obs_module_text("Hotkey_RemoveFg"), rmfg_hotkey_cb,
 						       gf);
+	blog(LOG_INFO,
+	     "[obs-privacy-guard] hotkeys registered: toggle=%d add=%d remove=%d (invalid=%d)",
+	     (int)gf->hotkey, (int)gf->hotkey_add, (int)gf->hotkey_remove, (int)OBS_INVALID_HOTKEY_ID);
 
 	guard_filter_update(gf, settings);
 	gf->blur_effect = load_blur_effect();
