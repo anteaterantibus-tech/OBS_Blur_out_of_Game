@@ -63,7 +63,7 @@ bool obs_module_load(void)
 	blog(LOG_INFO, "[obs-privacy-guard] hotkeys registered: toggle=%d add=%d remove=%d (invalid=%d)",
 	     (int)hotkey_toggle, (int)hotkey_add, (int)hotkey_remove, (int)OBS_INVALID_HOTKEY_ID);
 
-	blog(LOG_INFO, "[obs-privacy-guard] loaded (version %s)", "0.9.1");
+	blog(LOG_INFO, "[obs-privacy-guard] loaded (version %s)", "0.9.2");
 	return true;
 }
 

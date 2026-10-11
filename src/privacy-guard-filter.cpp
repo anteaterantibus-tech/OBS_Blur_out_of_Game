@@ -706,6 +706,35 @@ void guard_filter_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, SETTING_BLUR_KIND, 0);
 }
 
+static void mask_set_rows_visible(obs_properties_t *props, int idx, bool on)
+{
+	if (!props || idx < 0 || idx >= GUARD_MAX_MASKS)
+		return;
+	const char *suffixes[6] = {"x", "y", "w", "h", "mode", "color"};
+	for (int k = 0; k < 6; k++) {
+		char ck[64];
+		snprintf(ck, sizeof(ck), "mask%d_%s", idx, suffixes[k]);
+		obs_property_t *row = obs_properties_get(props, ck);
+		if (row)
+			obs_property_set_visible(row, on);
+	}
+}
+
+static bool mask_enabled_modified(obs_properties_t *props, obs_property_t *prop, obs_data_t *settings)
+{
+	if (!props || !prop || !settings)
+		return false;
+	const char *name = obs_property_name(prop);
+	int idx = -1;
+	if (name && sscanf(name, "mask%d_enabled", &idx) == 1 && idx >= 0 && idx < GUARD_MAX_MASKS) {
+		char key[64];
+		snprintf(key, sizeof(key), "mask%d_enabled", idx);
+		mask_set_rows_visible(props, idx, obs_data_get_bool(settings, key));
+		return true;
+	}
+	return false;
+}
+
 obs_properties_t *guard_filter_properties(void *data)
 {
 	obs_properties_t *props = obs_properties_create();
@@ -759,28 +788,35 @@ obs_properties_t *guard_filter_properties(void *data)
 	obs_property_t *masks_hint = obs_properties_add_text(props, SETTING_MASKS_INFO, "Info", OBS_TEXT_INFO);
 	obs_property_set_long_description(masks_hint, obs_module_text("Prop_MasksInfo"));
 	for (int i = 0; i < GUARD_MAX_MASKS; i++) {
-		char gid[64], key[64], title[128];
-		// Имя группы совпадает с bool-настройкой: чекбокс группы
-		// включает маску, секция сворачивается.
-		snprintf(gid, sizeof(gid), "mask%d_enabled", i);
+		char key[64], title[128];
 		snprintf(title, sizeof(title), "%s %d", obs_module_text("Prop_MaskTitle"), i + 1);
-		obs_properties_t *sub = obs_properties_create();
+		snprintf(key, sizeof(key), "mask%d_enabled", i);
+		obs_property_t *en = obs_properties_add_bool(props, key, title);
+		obs_property_set_modified_callback(en, mask_enabled_modified);
 		snprintf(key, sizeof(key), "mask%d_x", i);
-		(void)obs_properties_add_int(sub, key, obs_module_text("Prop_MaskX"), 0, 100, 1);
+		(void)obs_properties_add_int(props, key, obs_module_text("Prop_MaskX"), 0, 100, 1);
 		snprintf(key, sizeof(key), "mask%d_y", i);
-		(void)obs_properties_add_int(sub, key, obs_module_text("Prop_MaskY"), 0, 100, 1);
+		(void)obs_properties_add_int(props, key, obs_module_text("Prop_MaskY"), 0, 100, 1);
 		snprintf(key, sizeof(key), "mask%d_w", i);
-		(void)obs_properties_add_int(sub, key, obs_module_text("Prop_MaskW"), 0, 100, 1);
+		(void)obs_properties_add_int(props, key, obs_module_text("Prop_MaskW"), 0, 100, 1);
 		snprintf(key, sizeof(key), "mask%d_h", i);
-		(void)obs_properties_add_int(sub, key, obs_module_text("Prop_MaskH"), 0, 100, 1);
+		(void)obs_properties_add_int(props, key, obs_module_text("Prop_MaskH"), 0, 100, 1);
 		snprintf(key, sizeof(key), "mask%d_mode", i);
 		obs_property_t *mmode = obs_properties_add_list(
-			sub, key, obs_module_text("Prop_MaskMode"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+			props, key, obs_module_text("Prop_MaskMode"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 		obs_property_list_add_int(mmode, obs_module_text("Prop_MaskMode_Opaque"), 0);
 		obs_property_list_add_int(mmode, obs_module_text("Prop_MaskMode_Blur"), 1);
 		snprintf(key, sizeof(key), "mask%d_color", i);
-		(void)obs_properties_add_color(sub, key, obs_module_text("Prop_MaskColor"));
-		(void)obs_properties_add_group(props, gid, title, OBS_GROUP_CHECKABLE, sub);
+		(void)obs_properties_add_color(props, key, obs_module_text("Prop_MaskColor"));
+		// Начальная видимость строк по живому состоянию фильтра.
+		bool on = false;
+		if (data) {
+			guard_filter *gf = static_cast<guard_filter *>(data);
+			pthread_mutex_lock(&gf->mutex);
+			on = gf->masks[i].enabled;
+			pthread_mutex_unlock(&gf->mutex);
+		}
+		mask_set_rows_visible(props, i, on);
 	}
 
 	(void)obs_properties_add_text(props, "section_hotkey", obs_module_text("Prop_SectionHotkey"),

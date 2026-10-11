@@ -3,7 +3,7 @@
 ; (%APPDATA%\obs-studio) не затрагиваются.
 
 #define MyAppName "OBS Privacy Guard"
-#define MyAppVersion "0.9.1"
+#define MyAppVersion "0.9.2"
 #define SrcRoot "D:\PROJECT\OpenCode\OBS_Blur\release\RelWithDebInfo\obs-privacy-guard"
 
 [Setup]
@@ -21,7 +21,7 @@ PrivilegesRequired=admin
 CloseApplications=yes
 CloseApplicationsFilter=obs64.exe,obs32.exe
 OutputDir=D:\PROJECT\OpenCode\OBS_Blur\package
-OutputBaseFilename=obs-privacy-guard-0.9.1-windows-x64-Setup
+OutputBaseFilename=obs-privacy-guard-0.9.2-windows-x64-Setup
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
