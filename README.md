@@ -135,14 +135,15 @@ spanning two monitors is not treated as a game.
 
 ## Status / Статус
 
-Current version: 0.7.0. Done: auto-shutter, opaque/blur shutter, manual
-hotkey, process list with pickers and folder scan, fullscreen heuristic,
-visibility rule, 8 privacy masks, transition logging, installer.
+Current version: 0.7.2. Done: auto-shutter, opaque/blur shutter, manual
+hotkey, process list with pickers and folder scan, fullscreen heuristic
+with deny list, visibility rule, 8 privacy masks, transition logging,
+installer.
 Next: mouse-driven mask selection, custom shutter image.
 See `TESTS.md` for what is verified vs NOT RUN. Planned features are never
 presented as done.
 
-Текущая версия: 0.7.0. Готово: автошторка, плашка/размытие, ручная клавиша,
+Текущая версия: 0.7.2. Готово: автошторка, плашка/размытие, ручная клавиша,
 список процессов с пикеры и сканом папки, эвристика полного экрана, правило
 видимости, 8 приватных масок, журнал переходов, установщик.
 Дальше: выделение масок мышью, своя картинка заглушки.

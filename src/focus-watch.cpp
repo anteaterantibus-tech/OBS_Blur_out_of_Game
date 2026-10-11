@@ -117,10 +117,19 @@ static bool covers_monitor(HWND hwnd)
 	return win_area <= mon_area + mon_area / 20;
 }
 
-FocusQuery query_game_focus(const std::vector<std::string> &targets, bool allow_fullscreen)
+static bool in_list(const std::vector<std::wstring> &want, const std::wstring &exe)
 {
-	FocusQuery q;
+	if (exe.empty())
+		return false;
+	for (const std::wstring &w : want) {
+		if (exe == w)
+			return true;
+	}
+	return false;
+}
 
+static std::vector<std::wstring> lower_basenames(const std::vector<std::string> &targets)
+{
 	std::vector<std::wstring> want;
 	want.reserve(targets.size());
 	for (const std::string &t : targets) {
@@ -128,8 +137,17 @@ FocusQuery query_game_focus(const std::vector<std::string> &targets, bool allow_
 		if (!w.empty())
 			want.push_back(w);
 	}
+	return want;
+}
+
+FocusQuery query_game_focus(const std::vector<std::string> &targets, bool allow_fullscreen,
+			const std::vector<std::string> &deny)
+{
+	FocusQuery q;
+
+	std::vector<std::wstring> want = lower_basenames(targets);
 	if (want.empty() && !allow_fullscreen)
-		return q; // api_ok=false: не за чем следить = закрытое состояние
+		return q;
 
 	// Активное окно может отсутствовать (UAC, secure desktop) - это
 	// неизвестное состояние, его нельзя трактовать как "игра активна".
@@ -164,10 +182,13 @@ FocusQuery query_game_focus(const std::vector<std::string> &targets, bool allow_
 	}
 	if (!q.focused && allow_fullscreen && covers_monitor(fg)) {
 		// Чужое полноэкранное окно (игра без вписывания EXE).
-		// Процесс из списка может отсутствовать, это нормально.
-		q.fullscreen_other = true;
-		q.focused = true;
-		q.process_exists = true;
+		// Но не из deny-списка: полноэкранное видео браузера
+		// игрой не считается, fail-closed.
+		if (!in_list(lower_basenames(deny), fg_exe)) {
+			q.fullscreen_other = true;
+			q.focused = true;
+			q.process_exists = true;
+		}
 	}
 	return q;
 }
@@ -176,6 +197,7 @@ FocusQuery query_game_focus(const std::vector<std::string> &targets, bool allow_
 
 struct VisibleProbe {
 	const std::vector<std::wstring> *want;
+	const std::vector<std::wstring> *deny;
 	bool allow_any;
 	RECT fg_mon;
 	bool fg_mon_ok;
@@ -202,38 +224,34 @@ static BOOL CALLBACK visible_enum_cb(HWND hwnd, LPARAM lp)
 	    mi.rcMonitor.top == probe->fg_mon.top && mi.rcMonitor.right == probe->fg_mon.right &&
 	    mi.rcMonitor.bottom == probe->fg_mon.bottom)
 		return TRUE;
-	if (probe->allow_any) {
-		probe->found = true;
-		return FALSE;
-	}
 	DWORD pid = 0;
 	if (!GetWindowThreadProcessId(hwnd, &pid) || pid == 0)
 		return TRUE;
 	std::wstring exe = process_image_name(pid);
 	if (exe.empty())
 		return TRUE;
-	for (const std::wstring &w : *probe->want) {
-		if (exe == w) {
-			probe->found = true;
-			return FALSE;
-		}
+	if (in_list(*probe->deny, exe))
+		return TRUE;
+	if (probe->allow_any) {
+		probe->found = true;
+		return FALSE;
+	}
+	if (in_list(*probe->want, exe)) {
+		probe->found = true;
+		return FALSE;
 	}
 	return TRUE;
 }
 
-bool game_visible_elsewhere(const std::vector<std::string> &targets, bool allow_fullscreen)
+bool game_visible_elsewhere(const std::vector<std::string> &targets, bool allow_fullscreen,
+			    const std::vector<std::string> &deny)
 {
-	std::vector<std::wstring> want;
-	want.reserve(targets.size());
-	for (const std::string &t : targets) {
-		std::wstring w = base_name(widen_lower(t.c_str()));
-		if (!w.empty())
-			want.push_back(w);
-	}
+	std::vector<std::wstring> want = lower_basenames(targets);
+	std::vector<std::wstring> denyw = lower_basenames(deny);
 	if (want.empty() && !allow_fullscreen)
 		return false;
 	HWND fg = GetForegroundWindow();
-	VisibleProbe probe{&want, allow_fullscreen, {}, false, false};
+	VisibleProbe probe{&want, &denyw, allow_fullscreen, {}, false, false};
 	if (fg) {
 		HMONITOR fmon = MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST);
 		if (fmon) {

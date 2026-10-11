@@ -21,15 +21,20 @@ struct FocusQuery {
 // (имена файлов без пути, сравнение без учета регистра).
 // Если allow_fullscreen, отдельно помечается случай, когда активное окно
 // не из списка, но занимает весь монитор (игра без вписывания EXE).
+// Процессы из deny никогда не открывают через эвристику (например браузер
+// с видео на весь экран): fail-closed важнее удобства.
 // Пустой список при выключенной эвристике всегда дает api_ok=false,
 // чтобы вызывающая сторона перешла в закрытое состояние.
-FocusQuery query_game_focus(const std::vector<std::string> &targets, bool allow_fullscreen);
+FocusQuery query_game_focus(const std::vector<std::string> &targets, bool allow_fullscreen,
+			    const std::vector<std::string> &deny = {});
 
 // Игра из списка (или любая при allow_fullscreen) занимает весь монитор
 // и видна, а фокус находится на ДРУГОМ мониторе (клик по второму экрану).
 // Тогда картинка захваченного монитора не изменилась и закрывать не надо.
+// Процессы из deny игрой не считаются даже на весь экран (видео в браузере).
 // Только чтение, окон не создает.
-bool game_visible_elsewhere(const std::vector<std::string> &targets, bool allow_fullscreen);
+bool game_visible_elsewhere(const std::vector<std::string> &targets, bool allow_fullscreen,
+			    const std::vector<std::string> &deny = {});
 
 // Совместимость со старым одиночным значением настройки.
 inline FocusQuery query_game_focus(const char *target_exe)

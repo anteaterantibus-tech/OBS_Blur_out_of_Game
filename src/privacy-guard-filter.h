@@ -44,6 +44,7 @@ struct guard_filter {
 
 	// Настройки (под мьютексом).
 	std::vector<std::string> process_list; // имена EXE, по одному на игру
+	std::vector<std::string> deny_list; // никогда не считать игрой (браузер)
 	std::string game_dir; // закэшированный путь папки сканирования
 	std::vector<std::string> scanned_games; // результат последнего скана
 	bool auto_enabled = true;

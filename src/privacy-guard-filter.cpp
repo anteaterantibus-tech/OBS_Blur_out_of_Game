@@ -35,7 +35,8 @@
 #define SETTING_GAME_DIR "game_dir"
 #define VISIBLE_POLL_NS 500000000ULL
 #define GUARD_MAX_MASKS 8
-#define SETTING_ALLOW_FULLSCREEN "allow_fullscreen" // выбор из запущенных
+#define SETTING_ALLOW_FULLSCREEN "allow_fullscreen"
+#define SETTING_FULLSCREEN_DENY "fullscreen_deny" // выбор из запущенных
 #define SETTING_AUTO_ENABLED "auto_enabled"
 #define SETTING_RESTORE_DELAY_MS "restore_delay_ms"
 #define SETTING_SHUTTER_MODE "shutter_mode"
@@ -528,6 +529,7 @@ void guard_filter_update(void *data, obs_data_t *settings)
 	}
 	gf->auto_enabled = obs_data_get_bool(settings, SETTING_AUTO_ENABLED);
 	gf->allow_fullscreen = obs_data_get_bool(settings, SETTING_ALLOW_FULLSCREEN);
+	gf->deny_list = parse_exe_list(obs_data_get_string(settings, SETTING_FULLSCREEN_DENY));
 	long long delay = obs_data_get_int(settings, SETTING_RESTORE_DELAY_MS);
 	if (delay < 0)
 		delay = 0;
@@ -573,6 +575,7 @@ void guard_filter_defaults(obs_data_t *settings)
 	}
 	obs_data_set_default_bool(settings, SETTING_AUTO_ENABLED, true);
 	obs_data_set_default_bool(settings, SETTING_ALLOW_FULLSCREEN, true);
+	obs_data_set_default_string(settings, SETTING_FULLSCREEN_DENY, "");
 	obs_data_set_default_int(settings, SETTING_RESTORE_DELAY_MS, 500);
 	obs_data_set_default_int(settings, SETTING_SHUTTER_MODE, 0);
 	obs_data_set_default_int(settings, SETTING_SHUTTER_COLOR, 0xFF000000);
@@ -599,6 +602,10 @@ obs_properties_t *guard_filter_properties(void *data)
 	obs_property_t *fsprop = obs_properties_add_bool(props, SETTING_ALLOW_FULLSCREEN,
 						      obs_module_text("Prop_AllowFullscreen"));
 	obs_property_set_long_description(fsprop, obs_module_text("Prop_AllowFullscreen_Desc"));
+	obs_property_t *fdeny = obs_properties_add_text(props, SETTING_FULLSCREEN_DENY,
+						      obs_module_text("Prop_FullscreenDeny"),
+						      OBS_TEXT_DEFAULT);
+	obs_property_set_long_description(fdeny, obs_module_text("Prop_FullscreenDeny_Desc"));
 	(void)obs_properties_add_int(props, SETTING_RESTORE_DELAY_MS,
 				     obs_module_text("Prop_RestoreDelay"), 0, 5000, 50);
 	(void)obs_properties_add_text(props, SETTING_STATUS, obs_module_text("Prop_Status"), OBS_TEXT_INFO);
@@ -669,6 +676,7 @@ void guard_filter_tick(void *data, float /*seconds*/)
 	// Копируем настройки под мьютексом, Win32-опрос делаем без мьютекса.
 	pthread_mutex_lock(&gf->mutex);
 	std::vector<std::string> targets = gf->process_list;
+	std::vector<std::string> gf_deny = gf->deny_list;
 	bool manual = gf->manual_closed;
 	bool auto_en = gf->auto_enabled;
 	bool allow_fs = gf->allow_fullscreen;
@@ -692,8 +700,9 @@ void guard_filter_tick(void *data, float /*seconds*/)
 			// по устаревшим данным. Быстрый повторный опрос допустим.
 			targets = gf->process_list;
 			allow_fs = gf->allow_fullscreen;
+			gf_deny = gf->deny_list;
 			pthread_mutex_unlock(&gf->mutex);
-			privacy_guard::FocusQuery q = privacy_guard::query_game_focus(targets, allow_fs);
+			privacy_guard::FocusQuery q = privacy_guard::query_game_focus(targets, allow_fs, gf_deny);
 			pthread_mutex_lock(&gf->mutex);
 			gf->last_poll_ns = now_ns;
 			guard_apply_focus_locked(gf, q.focused, q.api_ok, q.process_exists, now_ns);
@@ -704,11 +713,11 @@ void guard_filter_tick(void *data, float /*seconds*/)
 		return;
 	}
 
-	privacy_guard::FocusQuery q = privacy_guard::query_game_focus(targets, allow_fs);
+	privacy_guard::FocusQuery q = privacy_guard::query_game_focus(targets, allow_fs, gf_deny);
 
 	bool vis_now = false;
 	if (now_ns - last_vis >= VISIBLE_POLL_NS) {
-		vis_now = privacy_guard::game_visible_elsewhere(targets, allow_fs);
+		vis_now = privacy_guard::game_visible_elsewhere(targets, allow_fs, gf_deny);
 		pthread_mutex_lock(&gf->mutex);
 		gf->last_visible_poll_ns = now_ns;
 		gf->visible_now = vis_now;
