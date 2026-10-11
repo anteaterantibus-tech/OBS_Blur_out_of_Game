@@ -39,6 +39,8 @@ struct GuardMask {
 struct guard_filter {
 	obs_source_t *source = nullptr;
 	obs_hotkey_id hotkey = OBS_INVALID_HOTKEY_ID;
+	obs_hotkey_id hotkey_add = OBS_INVALID_HOTKEY_ID;
+	obs_hotkey_id hotkey_remove = OBS_INVALID_HOTKEY_ID;
 	pthread_mutex_t mutex;
 	gs_effect_t *blur_effect = nullptr; // создается под graphics-мьютексом
 

@@ -507,6 +507,33 @@ static bool toggle_button_cb(obs_properties_t * /*props*/, obs_property_t * /*pr
 	return true;
 }
 
+static void fg_hotkey_cb(void *data, obs_hotkey_id /*id*/, obs_hotkey_t * /*hotkey*/, bool pressed,
+			 bool add)
+{
+	if (!pressed || !data)
+		return;
+	guard_filter *gf = static_cast<guard_filter *>(data);
+	std::string exe = lower_ascii_str(privacy_guard::foreground_exe());
+	if (exe.empty() || exe == "obs64.exe" || exe == "obs32.exe") {
+		blog(LOG_INFO, "[obs-privacy-guard] hotkey ignored: foreground is OBS or unknown");
+		return;
+	}
+	std::vector<std::string> one;
+	one.push_back(exe);
+	add_names_live(gf, SETTING_PROCESS_LIST, "\n", one, add);
+	blog(LOG_INFO, "[obs-privacy-guard] hotkey %s: %s", add ? "added" : "removed", exe.c_str());
+}
+
+static void addfg_hotkey_cb(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey, bool pressed)
+{
+	fg_hotkey_cb(data, id, hotkey, pressed, true);
+}
+
+static void rmfg_hotkey_cb(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey, bool pressed)
+{
+	fg_hotkey_cb(data, id, hotkey, pressed, false);
+}
+
 static gs_effect_t *load_blur_effect()
 {
 	char *full = obs_module_file(BLUR_EFFECT_FILE);
@@ -542,6 +569,11 @@ void *guard_filter_create(obs_data_t *settings, obs_source_t *source)
 
 	gf->hotkey = obs_hotkey_register_source(source, "ObsPrivacyGuard.Toggle",
 						obs_module_text("Hotkey_Toggle"), toggle_hotkey_cb, gf);
+	gf->hotkey_add = obs_hotkey_register_source(source, "ObsPrivacyGuard.AddFg",
+						    obs_module_text("Hotkey_AddFg"), addfg_hotkey_cb, gf);
+	gf->hotkey_remove = obs_hotkey_register_source(source, "ObsPrivacyGuard.RemoveFg",
+						       obs_module_text("Hotkey_RemoveFg"), rmfg_hotkey_cb,
+						       gf);
 
 	guard_filter_update(gf, settings);
 	gf->blur_effect = load_blur_effect();
@@ -564,6 +596,14 @@ void guard_filter_destroy(void *data)
 	if (gf->hotkey != OBS_INVALID_HOTKEY_ID) {
 		obs_hotkey_unregister(gf->hotkey);
 		gf->hotkey = OBS_INVALID_HOTKEY_ID;
+	}
+	if (gf->hotkey_add != OBS_INVALID_HOTKEY_ID) {
+		obs_hotkey_unregister(gf->hotkey_add);
+		gf->hotkey_add = OBS_INVALID_HOTKEY_ID;
+	}
+	if (gf->hotkey_remove != OBS_INVALID_HOTKEY_ID) {
+		obs_hotkey_unregister(gf->hotkey_remove);
+		gf->hotkey_remove = OBS_INVALID_HOTKEY_ID;
 	}
 	if (gf->blur_effect) {
 		obs_enter_graphics();
@@ -1085,6 +1125,20 @@ void guard_filter_save(void *data, obs_data_t *settings)
 			obs_data_array_release(arr);
 		}
 	}
+	if (gf->hotkey_add != OBS_INVALID_HOTKEY_ID) {
+		obs_data_array_t *arr = obs_hotkey_save(gf->hotkey_add);
+		if (arr) {
+			obs_data_set_array(settings, "addfg_hotkey", arr);
+			obs_data_array_release(arr);
+		}
+	}
+	if (gf->hotkey_remove != OBS_INVALID_HOTKEY_ID) {
+		obs_data_array_t *arr = obs_hotkey_save(gf->hotkey_remove);
+		if (arr) {
+			obs_data_set_array(settings, "rmfg_hotkey", arr);
+			obs_data_array_release(arr);
+		}
+	}
 }
 
 void guard_filter_load(void *data, obs_data_t *settings)
@@ -1096,6 +1150,20 @@ void guard_filter_load(void *data, obs_data_t *settings)
 		obs_data_array_t *arr = obs_data_get_array(settings, "toggle_hotkey");
 		if (arr) {
 			obs_hotkey_load(gf->hotkey, arr);
+			obs_data_array_release(arr);
+		}
+	}
+	if (gf->hotkey_add != OBS_INVALID_HOTKEY_ID) {
+		obs_data_array_t *arr = obs_data_get_array(settings, "addfg_hotkey");
+		if (arr) {
+			obs_hotkey_load(gf->hotkey_add, arr);
+			obs_data_array_release(arr);
+		}
+	}
+	if (gf->hotkey_remove != OBS_INVALID_HOTKEY_ID) {
+		obs_data_array_t *arr = obs_data_get_array(settings, "rmfg_hotkey");
+		if (arr) {
+			obs_hotkey_load(gf->hotkey_remove, arr);
 			obs_data_array_release(arr);
 		}
 	}

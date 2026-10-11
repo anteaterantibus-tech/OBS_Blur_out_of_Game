@@ -30,7 +30,7 @@ bool obs_module_load(void)
 
 	obs_register_source(&guard_filter_info);
 
-	blog(LOG_INFO, "[obs-privacy-guard] loaded (version %s)", "0.8.4");
+	blog(LOG_INFO, "[obs-privacy-guard] loaded (version %s)", "0.8.5");
 	return true;
 }
 
