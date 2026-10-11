@@ -199,26 +199,28 @@ static std::string wide_to_utf8_str(const wchar_t *ws)
 }
 
 // Дописать имена в живой список источника сразу (кнопка работает в потоке UI).
-static void add_names_live(guard_filter *gf, const std::vector<std::string> &names)
+static void add_names_live(guard_filter *gf, const char *key, const char *sep, const std::vector<std::string> &names)
 {
-	if (!gf || !gf->source || names.empty())
+	if (!gf || !gf->source || !key || names.empty())
 		return;
 	obs_data_t *cur = obs_source_get_settings(gf->source);
 	if (!cur)
 		return;
-	std::vector<std::string> list = parse_exe_list(obs_data_get_string(cur, SETTING_PROCESS_LIST));
+	std::vector<std::string> list = parse_exe_list(obs_data_get_string(cur, key));
 	for (size_t i = 0; i < names.size(); i++)
 		push_unique(list, names[i]);
 	std::string merged;
 	for (size_t i = 0; i < list.size(); i++) {
 		if (i > 0)
-			merged += "\n";
+			merged += sep;
 		merged += list[i];
 	}
-	obs_data_set_string(cur, SETTING_PROCESS_LIST, merged.c_str());
+	obs_data_set_string(cur, key, merged.c_str());
 	obs_source_update(gf->source, cur);
 	obs_data_release(cur);
 }
+
+#define NL_SEP "\n"
 
 static bool add_exe_button_cb(obs_properties_t * /*props*/, obs_property_t * /*prop*/, void *data)
 {
@@ -253,7 +255,50 @@ static bool add_exe_button_cb(obs_properties_t * /*props*/, obs_property_t * /*p
 			p += wcslen(p) + 1;
 		}
 	}
-	add_names_live(gf, names);
+	add_names_live(gf, SETTING_PROCESS_LIST, NL_SEP, names);
+	return true;
+}
+
+static bool pick_exe_files(std::vector<std::string> &names, const char *title_key)
+{
+	wchar_t buf[32768] = {0};
+	memset(buf, 0, sizeof(buf));
+	OPENFILENAMEW ofn = {};
+	ofn.lStructSize = sizeof(ofn);
+	ofn.lpstrFile = buf;
+	ofn.nMaxFile = 32768;
+	ofn.lpstrFilter = L"*.exe\0*.exe\0";
+	ofn.nFilterIndex = 1;
+	const char *dlgtitle = obs_module_text(title_key);
+	if (dlgtitle && *dlgtitle) {
+		static wchar_t wtitle[256];
+		MultiByteToWideChar(CP_UTF8, 0, dlgtitle, -1, wtitle, 256);
+		ofn.lpstrTitle = wtitle;
+	}
+	ofn.Flags = OFN_ALLOWMULTISELECT | OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
+	if (!GetOpenFileNameW(&ofn))
+		return false;
+	const wchar_t *p = buf + wcslen(buf) + 1;
+	if (*p == 0) {
+		names.push_back(exe_base_name(wide_to_utf8_str(buf).c_str()));
+	} else {
+		while (*p) {
+			names.push_back(exe_base_name(wide_to_utf8_str(p).c_str()));
+			p += wcslen(p) + 1;
+		}
+	}
+	return true;
+}
+
+static bool add_deny_button_cb(obs_properties_t *, obs_property_t *, void *data)
+{
+	guard_filter *gf = static_cast<guard_filter *>(data);
+	if (!gf)
+		return true;
+	std::vector<std::string> names;
+	if (!pick_exe_files(names, "Prop_AddDeny_Title"))
+		return true;
+	add_names_live(gf, SETTING_FULLSCREEN_DENY, ", ", names);
 	return true;
 }
 
@@ -285,7 +330,7 @@ static bool add_dir_button_cb(obs_properties_t * /*props*/, obs_property_t * /*p
 	if (!got || !path[0])
 		return true;
 	std::vector<std::string> found = privacy_guard::scan_games_folder(wide_to_utf8_str(path), 3);
-	add_names_live(gf, found);
+	add_names_live(gf, SETTING_PROCESS_LIST, "\n", found);
 	return true;
 }
 #endif
@@ -606,6 +651,10 @@ obs_properties_t *guard_filter_properties(void *data)
 						      obs_module_text("Prop_FullscreenDeny"),
 						      OBS_TEXT_DEFAULT);
 	obs_property_set_long_description(fdeny, obs_module_text("Prop_FullscreenDeny_Desc"));
+#ifdef _WIN32
+	(void)obs_properties_add_button2(props, "add_deny_button", obs_module_text("Prop_AddDeny"),
+					 add_deny_button_cb, data);
+#endif
 	(void)obs_properties_add_int(props, SETTING_RESTORE_DELAY_MS,
 				     obs_module_text("Prop_RestoreDelay"), 0, 5000, 50);
 	(void)obs_properties_add_text(props, SETTING_STATUS, obs_module_text("Prop_Status"), OBS_TEXT_INFO);
