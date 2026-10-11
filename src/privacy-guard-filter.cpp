@@ -340,9 +340,24 @@ static bool add_fg_button_cb(obs_properties_t * /*props*/, obs_property_t * /*pr
 	guard_filter *gf = static_cast<guard_filter *>(data);
 	if (!gf)
 		return true;
-	std::string exe = privacy_guard::foreground_exe();
-	if (exe.empty())
+	// В момент нажатия фокус всегда на самом диалоге, поэтому берем
+	// последнее окно, где был фокус до открытия свойств (не старше 2 минут).
+	pthread_mutex_lock(&gf->mutex);
+	std::string exe = gf->last_fg_exe;
+	uint64_t when = gf->last_fg_ns;
+	pthread_mutex_unlock(&gf->mutex);
+	if (exe.empty() || os_gettime_ns() - when > 120000000000ULL) {
+		const char *msg = obs_module_text("Prop_AddFg_Hint");
+		const char *cap = obs_module_text("FilterName");
+		wchar_t wmsg[512] = {0};
+		wchar_t wcap[128] = {0};
+		if (msg)
+			MultiByteToWideChar(CP_UTF8, 0, msg, -1, wmsg, 512);
+		if (cap)
+			MultiByteToWideChar(CP_UTF8, 0, cap, -1, wcap, 128);
+		MessageBoxW(nullptr, wmsg, wcap, MB_OK | MB_ICONINFORMATION);
 		return true;
+	}
 	std::vector<std::string> one;
 	one.push_back(exe);
 	add_names_live(gf, SETTING_PROCESS_LIST, "\n", one);
@@ -776,7 +791,17 @@ void guard_filter_tick(void *data, float /*seconds*/)
 			allow_fs = gf->allow_fullscreen;
 			gf_deny = gf->deny_list;
 			pthread_mutex_unlock(&gf->mutex);
-			privacy_guard::FocusQuery q = privacy_guard::query_game_focus(targets, allow_fs, gf_deny);
+	privacy_guard::FocusQuery q = privacy_guard::query_game_focus(targets, allow_fs, gf_deny);
+
+	// Запоминаем последний фокус не на OBS для кнопки "+ Активное окно":
+	// в момент нажатия кнопки фокус всегда на самом диалоге.
+	std::string fgexe = lower_ascii_str(privacy_guard::foreground_exe());
+	if (!fgexe.empty() && fgexe != "obs64.exe" && fgexe != "obs32.exe") {
+		pthread_mutex_lock(&gf->mutex);
+		gf->last_fg_exe = fgexe;
+		gf->last_fg_ns = now_ns;
+		pthread_mutex_unlock(&gf->mutex);
+	}
 			pthread_mutex_lock(&gf->mutex);
 			gf->last_poll_ns = now_ns;
 			guard_apply_focus_locked(gf, q.focused, q.api_ok, q.process_exists, now_ns);
