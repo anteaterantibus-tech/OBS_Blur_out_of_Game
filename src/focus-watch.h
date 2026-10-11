@@ -33,7 +33,7 @@ FocusQuery query_game_focus(const std::vector<std::string> &targets, bool allow_
 // Тогда картинка захваченного монитора не изменилась и закрывать не надо.
 // Процессы из deny игрой не считаются даже на весь экран (видео в браузере).
 // Только чтение, окон не создает.
-bool game_visible_elsewhere(const std::vector<std::string> &targets, bool allow_fullscreen,
+bool game_visible_elsewhere(const std::vector<std::string> &targets,
 			    const std::vector<std::string> &deny = {});
 
 // Совместимость со старым одиночным значением настройки.

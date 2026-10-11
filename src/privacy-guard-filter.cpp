@@ -766,7 +766,7 @@ void guard_filter_tick(void *data, float /*seconds*/)
 
 	bool vis_now = false;
 	if (now_ns - last_vis >= VISIBLE_POLL_NS) {
-		vis_now = privacy_guard::game_visible_elsewhere(targets, allow_fs, gf_deny);
+		vis_now = privacy_guard::game_visible_elsewhere(targets, gf_deny);
 		pthread_mutex_lock(&gf->mutex);
 		gf->last_visible_poll_ns = now_ns;
 		gf->visible_now = vis_now;

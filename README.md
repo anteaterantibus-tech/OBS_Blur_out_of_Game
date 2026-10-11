@@ -135,7 +135,7 @@ spanning two monitors is not treated as a game.
 
 ## Status / Статус
 
-Current version: 0.7.2. Done: auto-shutter, opaque/blur shutter, manual
+Current version: 0.7.5. Done: auto-shutter, opaque/blur shutter, manual
 hotkey, process list with pickers and folder scan, fullscreen heuristic
 with deny list, visibility rule, 8 privacy masks, transition logging,
 installer.

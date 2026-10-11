@@ -198,7 +198,6 @@ FocusQuery query_game_focus(const std::vector<std::string> &targets, bool allow_
 struct VisibleProbe {
 	const std::vector<std::wstring> *want;
 	const std::vector<std::wstring> *deny;
-	bool allow_any;
 	RECT fg_mon;
 	bool fg_mon_ok;
 	bool found;
@@ -232,10 +231,6 @@ static BOOL CALLBACK visible_enum_cb(HWND hwnd, LPARAM lp)
 		return TRUE;
 	if (in_list(*probe->deny, exe))
 		return TRUE;
-	if (probe->allow_any) {
-		probe->found = true;
-		return FALSE;
-	}
 	if (in_list(*probe->want, exe)) {
 		probe->found = true;
 		return FALSE;
@@ -243,15 +238,15 @@ static BOOL CALLBACK visible_enum_cb(HWND hwnd, LPARAM lp)
 	return TRUE;
 }
 
-bool game_visible_elsewhere(const std::vector<std::string> &targets, bool allow_fullscreen,
+bool game_visible_elsewhere(const std::vector<std::string> &targets,
 			    const std::vector<std::string> &deny)
 {
 	std::vector<std::wstring> want = lower_basenames(targets);
 	std::vector<std::wstring> denyw = lower_basenames(deny);
-	if (want.empty() && !allow_fullscreen)
+	if (want.empty())
 		return false;
 	HWND fg = GetForegroundWindow();
-	VisibleProbe probe{&want, &denyw, allow_fullscreen, {}, false, false};
+	VisibleProbe probe{&want, &denyw, {}, false, false};
 	if (fg) {
 		HMONITOR fmon = MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST);
 		if (fmon) {
