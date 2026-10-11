@@ -8,6 +8,8 @@ uniform float4x4 ViewProj;
 uniform float2 texel_size;
 uniform float blur_radius;
 uniform float darken;
+uniform float blur_kind;
+uniform float pixel_size;
 
 sampler_state def_sampler {
 	Filter = Linear;
@@ -30,6 +32,13 @@ VSOut VSDefault(VSOut v)
 
 float4 PSBlur(VSOut v) : TARGET
 {
+	if (blur_kind > 0.5) {
+		float2 cell = texel_size * pixel_size;
+		float2 quv = (floor(v.uv / cell) + 0.5) * cell;
+		float4 pix = image.Sample(def_sampler, quv);
+		pix.rgb *= (1.0 - darken);
+		return pix;
+	}
 	float2 t = texel_size * blur_radius;
 	float4 sum = image.Sample(def_sampler, v.uv) * 0.20;
 	sum += image.Sample(def_sampler, v.uv + float2(t.x * 1.5, 0.0)) * 0.10;
@@ -100,6 +109,12 @@ float4 PSMask(VSOut v) : TARGET
 	b += image.Sample(def_sampler, v.uv - float2(t.x * 3.5, 0.0)) * 0.05;
 	b += image.Sample(def_sampler, v.uv + float2(0.0, t.y * 3.5)) * 0.05;
 	b += image.Sample(def_sampler, v.uv - float2(0.0, t.y * 3.5)) * 0.05;
+
+	if (blur_kind > 0.5) {
+		float2 cell = texel_size * pixel_size;
+		float2 quv = (floor(v.uv / cell) + 0.5) * cell;
+		b = image.Sample(def_sampler, quv);
+	}
 
 	float4 outc = orig;
 	if (mask_a0.x > 0.5) {

@@ -42,6 +42,7 @@
 #define SETTING_SHUTTER_MODE "shutter_mode"
 #define SETTING_SHUTTER_COLOR "shutter_color"
 #define SETTING_BLUR_STRENGTH "blur_strength"
+#define SETTING_BLUR_KIND "blur_kind"
 #define SETTING_STATUS "status_text"
 #define SETTING_TOGGLE_BUTTON "toggle_button"
 #define SETTING_MASKS_INFO "masks_info"
@@ -585,6 +586,8 @@ void guard_filter_update(void *data, obs_data_t *settings)
 	vec4_from_rgba(&gf->shutter_color, color);
 	long long mode = obs_data_get_int(settings, SETTING_SHUTTER_MODE);
 	gf->shutter_mode = (mode == 1) ? ShutterMode::Blur : ShutterMode::Opaque;
+	long long bkind = obs_data_get_int(settings, SETTING_BLUR_KIND);
+	gf->blur_kind = (bkind == 1) ? 1 : 0;
 	long long strength = obs_data_get_int(settings, SETTING_BLUR_STRENGTH);
 	if (strength < 1)
 		strength = 1;
@@ -625,6 +628,7 @@ void guard_filter_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, SETTING_SHUTTER_MODE, 0);
 	obs_data_set_default_int(settings, SETTING_SHUTTER_COLOR, 0xFF000000);
 	obs_data_set_default_int(settings, SETTING_BLUR_STRENGTH, 6);
+	obs_data_set_default_int(settings, SETTING_BLUR_KIND, 0);
 }
 
 obs_properties_t *guard_filter_properties(void *data)
@@ -669,6 +673,11 @@ obs_properties_t *guard_filter_properties(void *data)
 	(void)obs_properties_add_color(props, SETTING_SHUTTER_COLOR, obs_module_text("Prop_ShutterColor"));
 	(void)obs_properties_add_int(props, SETTING_BLUR_STRENGTH, obs_module_text("Prop_BlurStrength"),
 				     1, 10, 1);
+	obs_property_t *bkindp = obs_properties_add_list(props, SETTING_BLUR_KIND,
+							 obs_module_text("Prop_BlurKind"),
+							 OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(bkindp, obs_module_text("Prop_BlurKind_Gauss"), 0);
+	obs_property_list_add_int(bkindp, obs_module_text("Prop_BlurKind_Pixel"), 1);
 
 	(void)obs_properties_add_text(props, "section_masks", obs_module_text("Prop_SectionMasks"),
 				      OBS_TEXT_INFO);
@@ -816,7 +825,7 @@ static void render_opaque(uint32_t width, uint32_t height, const struct vec4 *co
 static void render_opaque(uint32_t width, uint32_t height, const struct vec4 *color); // ниже
 
 static void render_blur_frame(guard_filter *gf, gs_effect_t *effect, uint32_t width, uint32_t height,
-			      float radius, float dark, const struct vec4 *fallback_color)
+			      float radius, float kind, float dark, const struct vec4 *fallback_color)
 {
 	if (!effect || width == 0 || height == 0) {
 		render_opaque(width, height, fallback_color);
@@ -831,6 +840,8 @@ static void render_blur_frame(guard_filter *gf, gs_effect_t *effect, uint32_t wi
 	gs_eparam_t *texel = gs_effect_get_param_by_name(effect, "texel_size");
 	gs_eparam_t *pradius = gs_effect_get_param_by_name(effect, "blur_radius");
 	gs_eparam_t *pdark = gs_effect_get_param_by_name(effect, "darken");
+	gs_eparam_t *pkind = gs_effect_get_param_by_name(effect, "blur_kind");
+	gs_eparam_t *ppix = gs_effect_get_param_by_name(effect, "pixel_size");
 	struct vec2 texel_size;
 	vec2_set(&texel_size, 1.0f / (float)width, 1.0f / (float)height);
 	if (texel)
@@ -839,6 +850,10 @@ static void render_blur_frame(guard_filter *gf, gs_effect_t *effect, uint32_t wi
 		gs_effect_set_float(pradius, radius);
 	if (pdark)
 		gs_effect_set_float(pdark, dark);
+	if (pkind)
+		gs_effect_set_float(pkind, kind);
+	if (ppix)
+		gs_effect_set_float(ppix, 4.0f + radius * 4.0f);
 	obs_source_process_filter_end(gf->source, effect, width, height);
 }
 
@@ -853,7 +868,7 @@ static bool masks_active_locked(guard_filter *gf)
 }
 
 static void render_masks_frame(guard_filter *gf, gs_effect_t *effect, const GuardMask *masks,
-			       uint32_t width, uint32_t height, float radius,
+			       uint32_t width, uint32_t height, float radius, float kind,
 			       const struct vec4 *fallback_color)
 {
 	if (!effect || width == 0 || height == 0) {
@@ -873,6 +888,14 @@ static void render_masks_frame(guard_filter *gf, gs_effect_t *effect, const Guar
 		gs_effect_set_vec2(texel, &texel_size);
 	if (pradius)
 		gs_effect_set_float(pradius, radius);
+	{
+		gs_eparam_t *pkind = gs_effect_get_param_by_name(effect, "blur_kind");
+		gs_eparam_t *ppix = gs_effect_get_param_by_name(effect, "pixel_size");
+		if (pkind)
+			gs_effect_set_float(pkind, kind);
+		if (ppix)
+			gs_effect_set_float(ppix, 4.0f + radius * 4.0f);
+	}
 	// Парсер эффектов OBS не поддерживает массивы uniform: 24 отдельных
 	// параметра mask_rN/mask_aN/mask_cN выставляются по именам.
 	for (int i = 0; i < GUARD_MAX_MASKS; i++) {
@@ -916,6 +939,7 @@ void guard_filter_render(void *data, gs_effect_t * /*effect*/)
 	struct vec4 color = gf->shutter_color;
 	float radius = gf->blur_radius;
 	float dark = gf->blur_dark;
+	float kind = (gf->blur_kind == 1) ? 1.0f : 0.0f;
 	gs_effect_t *blur = gf->blur_effect;
 	pthread_mutex_unlock(&gf->mutex);
 
@@ -946,12 +970,12 @@ void guard_filter_render(void *data, gs_effect_t * /*effect*/)
 						      width, height);
 			return;
 		}
-		render_masks_frame(gf, mask_fx, snap.data(), width, height, radius, &color);
+		render_masks_frame(gf, mask_fx, snap.data(), width, height, radius, kind, &color);
 		return;
 	}
 
 	if (mode == ShutterMode::Blur) {
-		render_blur_frame(gf, blur, width, height, radius, dark, &color);
+		render_blur_frame(gf, blur, width, height, radius, kind, dark, &color);
 		return;
 	}
 

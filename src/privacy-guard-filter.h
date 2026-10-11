@@ -54,6 +54,7 @@ struct guard_filter {
 	ShutterMode shutter_mode = ShutterMode::Opaque;
 	float blur_radius = 6.0f; // множитель шага выборки шейдера
 	float blur_dark = 0.30f; // затемнение размытой шторки
+	int blur_kind = 0; // 0 = гаусс, 1 = пикселизация
 
 	// Состояние (под мьютексом).
 	bool manual_closed = false;
