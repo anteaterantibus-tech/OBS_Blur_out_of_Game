@@ -1,0 +1,185 @@
+// OBS Privacy Guard - размытие текущего кадра для шторки.
+// Одно проходное 2D гауссово размытие (13 точек) + затемнение.
+// Используется только когда изображение уже решено закрыть: входной кадр
+// существует, но показывать его резко нельзя.
+
+uniform texture2d image;
+uniform float4x4 ViewProj;
+uniform float2 texel_size;
+uniform float blur_radius;
+uniform float darken;
+
+sampler_state def_sampler {
+	Filter = Linear;
+	AddressU = Clamp;
+	AddressV = Clamp;
+};
+
+struct VSOut {
+	float4 pos : POSITION;
+	float2 uv : TEXCOORD0;
+};
+
+VSOut VSDefault(VSOut v)
+{
+	VSOut o;
+	o.pos = mul(float4(v.pos.xyz, 1.0), ViewProj);
+	o.uv = v.uv;
+	return o;
+}
+
+float4 PSBlur(VSOut v) : TARGET
+{
+	float2 t = texel_size * blur_radius;
+	float4 sum = image.Sample(def_sampler, v.uv) * 0.20;
+	sum += image.Sample(def_sampler, v.uv + float2(t.x * 1.5, 0.0)) * 0.10;
+	sum += image.Sample(def_sampler, v.uv - float2(t.x * 1.5, 0.0)) * 0.10;
+	sum += image.Sample(def_sampler, v.uv + float2(0.0, t.y * 1.5)) * 0.10;
+	sum += image.Sample(def_sampler, v.uv - float2(0.0, t.y * 1.5)) * 0.10;
+	sum += image.Sample(def_sampler, v.uv + float2(t.x * 1.5, t.y * 1.5)) * 0.05;
+	sum += image.Sample(def_sampler, v.uv + float2(-t.x * 1.5, t.y * 1.5)) * 0.05;
+	sum += image.Sample(def_sampler, v.uv + float2(t.x * 1.5, -t.y * 1.5)) * 0.05;
+	sum += image.Sample(def_sampler, v.uv + float2(-t.x * 1.5, -t.y * 1.5)) * 0.05;
+	sum += image.Sample(def_sampler, v.uv + float2(t.x * 3.5, 0.0)) * 0.05;
+	sum += image.Sample(def_sampler, v.uv - float2(t.x * 3.5, 0.0)) * 0.05;
+	sum += image.Sample(def_sampler, v.uv + float2(0.0, t.y * 3.5)) * 0.05;
+	sum += image.Sample(def_sampler, v.uv - float2(0.0, t.y * 3.5)) * 0.05;
+	sum.rgb *= (1.0 - darken);
+	return sum;
+}
+
+technique Draw {
+	pass {
+		vertex_shader = VSDefault(v);
+		pixel_shader = PSBlur(v);
+	}
+}
+
+// Этап 2: приватные области. 8 прямоугольников в UV 0..1.
+// mask_rN = left, top, width, height; mask_aN.x = вкл/выкл; mask_aN.y = 0 плашка, 1 размытие.
+uniform float4 mask_r0;
+uniform float4 mask_a0;
+uniform float4 mask_c0;
+uniform float4 mask_r1;
+uniform float4 mask_a1;
+uniform float4 mask_c1;
+uniform float4 mask_r2;
+uniform float4 mask_a2;
+uniform float4 mask_c2;
+uniform float4 mask_r3;
+uniform float4 mask_a3;
+uniform float4 mask_c3;
+uniform float4 mask_r4;
+uniform float4 mask_a4;
+uniform float4 mask_c4;
+uniform float4 mask_r5;
+uniform float4 mask_a5;
+uniform float4 mask_c5;
+uniform float4 mask_r6;
+uniform float4 mask_a6;
+uniform float4 mask_c6;
+uniform float4 mask_r7;
+uniform float4 mask_a7;
+uniform float4 mask_c7;
+uniform float mask_blur_radius;
+
+float4 PSMask(VSOut v) : TARGET
+{
+	float4 orig = image.Sample(def_sampler, v.uv);
+	float2 t = texel_size * mask_blur_radius;
+	float4 b = orig * 0.20;
+	b += image.Sample(def_sampler, v.uv + float2(t.x * 1.5, 0.0)) * 0.10;
+	b += image.Sample(def_sampler, v.uv - float2(t.x * 1.5, 0.0)) * 0.10;
+	b += image.Sample(def_sampler, v.uv + float2(0.0, t.y * 1.5)) * 0.10;
+	b += image.Sample(def_sampler, v.uv - float2(0.0, t.y * 1.5)) * 0.10;
+	b += image.Sample(def_sampler, v.uv + float2(t.x * 1.5, t.y * 1.5)) * 0.05;
+	b += image.Sample(def_sampler, v.uv + float2(-t.x * 1.5, t.y * 1.5)) * 0.05;
+	b += image.Sample(def_sampler, v.uv + float2(t.x * 1.5, -t.y * 1.5)) * 0.05;
+	b += image.Sample(def_sampler, v.uv + float2(-t.x * 1.5, -t.y * 1.5)) * 0.05;
+	b += image.Sample(def_sampler, v.uv + float2(t.x * 3.5, 0.0)) * 0.05;
+	b += image.Sample(def_sampler, v.uv - float2(t.x * 3.5, 0.0)) * 0.05;
+	b += image.Sample(def_sampler, v.uv + float2(0.0, t.y * 3.5)) * 0.05;
+	b += image.Sample(def_sampler, v.uv - float2(0.0, t.y * 3.5)) * 0.05;
+
+	float4 outc = orig;
+	if (mask_a0.x > 0.5) {
+		float4 r = mask_r0;
+		if (v.uv.x >= r.x && v.uv.x <= r.x + r.z && v.uv.y >= r.y && v.uv.y <= r.y + r.w) {
+			if (mask_a0.y > 0.5)
+				outc = float4(b.rgb, 1.0);
+			else
+				outc = mask_c0;
+		}
+	}
+	if (mask_a1.x > 0.5) {
+		float4 r = mask_r1;
+		if (v.uv.x >= r.x && v.uv.x <= r.x + r.z && v.uv.y >= r.y && v.uv.y <= r.y + r.w) {
+			if (mask_a1.y > 0.5)
+				outc = float4(b.rgb, 1.0);
+			else
+				outc = mask_c1;
+		}
+	}
+	if (mask_a2.x > 0.5) {
+		float4 r = mask_r2;
+		if (v.uv.x >= r.x && v.uv.x <= r.x + r.z && v.uv.y >= r.y && v.uv.y <= r.y + r.w) {
+			if (mask_a2.y > 0.5)
+				outc = float4(b.rgb, 1.0);
+			else
+				outc = mask_c2;
+		}
+	}
+	if (mask_a3.x > 0.5) {
+		float4 r = mask_r3;
+		if (v.uv.x >= r.x && v.uv.x <= r.x + r.z && v.uv.y >= r.y && v.uv.y <= r.y + r.w) {
+			if (mask_a3.y > 0.5)
+				outc = float4(b.rgb, 1.0);
+			else
+				outc = mask_c3;
+		}
+	}
+	if (mask_a4.x > 0.5) {
+		float4 r = mask_r4;
+		if (v.uv.x >= r.x && v.uv.x <= r.x + r.z && v.uv.y >= r.y && v.uv.y <= r.y + r.w) {
+			if (mask_a4.y > 0.5)
+				outc = float4(b.rgb, 1.0);
+			else
+				outc = mask_c4;
+		}
+	}
+	if (mask_a5.x > 0.5) {
+		float4 r = mask_r5;
+		if (v.uv.x >= r.x && v.uv.x <= r.x + r.z && v.uv.y >= r.y && v.uv.y <= r.y + r.w) {
+			if (mask_a5.y > 0.5)
+				outc = float4(b.rgb, 1.0);
+			else
+				outc = mask_c5;
+		}
+	}
+	if (mask_a6.x > 0.5) {
+		float4 r = mask_r6;
+		if (v.uv.x >= r.x && v.uv.x <= r.x + r.z && v.uv.y >= r.y && v.uv.y <= r.y + r.w) {
+			if (mask_a6.y > 0.5)
+				outc = float4(b.rgb, 1.0);
+			else
+				outc = mask_c6;
+		}
+	}
+	if (mask_a7.x > 0.5) {
+		float4 r = mask_r7;
+		if (v.uv.x >= r.x && v.uv.x <= r.x + r.z && v.uv.y >= r.y && v.uv.y <= r.y + r.w) {
+			if (mask_a7.y > 0.5)
+				outc = float4(b.rgb, 1.0);
+			else
+				outc = mask_c7;
+		}
+	}
+	return outc;
+}
+
+technique Mask {
+	pass {
+		vertex_shader = VSDefault(v);
+		pixel_shader = PSMask(v);
+	}
+}
