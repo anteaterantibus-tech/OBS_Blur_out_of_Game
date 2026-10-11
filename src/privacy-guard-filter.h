@@ -63,8 +63,6 @@ struct guard_filter {
 	uint64_t last_poll_ns = 0;
 	uint64_t last_visible_poll_ns = 0;
 	bool visible_now = false;
-	std::string last_fg_exe; // последний фокус не на OBS (для кнопки +)
-	uint64_t last_fg_ns = 0;
 	uint32_t input_w = 0; // размеры входного кадра родителя
 	uint32_t input_h = 0;
 	std::array<GuardMask, GUARD_MAX_MASKS> masks;

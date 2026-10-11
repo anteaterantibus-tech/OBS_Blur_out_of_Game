@@ -392,74 +392,6 @@ static bool add_dir_button_cb(obs_properties_t * /*props*/, obs_property_t * /*p
 	add_names_live(gf, SETTING_PROCESS_LIST, "\n", found, true);
 	return true;
 }
-
-static void show_info_box(const char *text_utf8)
-{
-	const char *cap = obs_module_text("FilterName");
-	wchar_t wmsg[512] = {0};
-	wchar_t wcap[128] = {0};
-	if (text_utf8)
-		MultiByteToWideChar(CP_UTF8, 0, text_utf8, -1, wmsg, 512);
-	if (cap)
-		MultiByteToWideChar(CP_UTF8, 0, cap, -1, wcap, 128);
-	MessageBoxW(nullptr, wmsg, wcap, MB_OK | MB_ICONINFORMATION);
-}
-
-static void show_fg_hint()
-{
-	show_info_box(obs_module_text("Prop_AddFg_Hint"));
-}
-
-static bool last_fg_name(guard_filter *gf, std::string &exe)
-{
-	if (!gf)
-		return false;
-	pthread_mutex_lock(&gf->mutex);
-	exe = gf->last_fg_exe;
-	uint64_t when = gf->last_fg_ns;
-	pthread_mutex_unlock(&gf->mutex);
-	if (exe.empty() || os_gettime_ns() - when > 120000000000ULL)
-		return false;
-	return true;
-}
-
-static bool add_fg_button_cb(obs_properties_t * /*props*/, obs_property_t * /*prop*/, void *data)
-{
-	guard_filter *gf = static_cast<guard_filter *>(data);
-	std::string exe;
-	bool fresh = last_fg_name(gf, exe);
-	blog(LOG_INFO, "[obs-privacy-guard] add button: fresh=%d exe='%s'", (int)fresh, exe.c_str());
-	if (!fresh) {
-		show_fg_hint();
-		return true;
-	}
-	std::vector<std::string> one;
-	one.push_back(exe);
-	add_names_live(gf, SETTING_PROCESS_LIST, "\n", one, true);
-	char done[256];
-	snprintf(done, sizeof(done), obs_module_text("Prop_AddedFmt"), exe.c_str());
-	show_info_box(done);
-	return true;
-}
-
-static bool remove_fg_button_cb(obs_properties_t * /*props*/, obs_property_t * /*prop*/, void *data)
-{
-	guard_filter *gf = static_cast<guard_filter *>(data);
-	std::string exe;
-	bool fresh = last_fg_name(gf, exe);
-	blog(LOG_INFO, "[obs-privacy-guard] remove button: fresh=%d exe='%s'", (int)fresh, exe.c_str());
-	if (!fresh) {
-		show_fg_hint();
-		return true;
-	}
-	std::vector<std::string> one;
-	one.push_back(exe);
-	add_names_live(gf, SETTING_PROCESS_LIST, "\n", one, false);
-	char done[256];
-	snprintf(done, sizeof(done), obs_module_text("Prop_RemovedFmt"), exe.c_str());
-	show_info_box(done);
-	return true;
-}
 #endif
 
 static const char *state_name(GuardState st)
@@ -789,10 +721,6 @@ obs_properties_t *guard_filter_properties(void *data)
 					 add_exe_button_cb, data);
 	(void)obs_properties_add_button2(props, "add_dir_button", obs_module_text("Prop_AddDir"),
 					 add_dir_button_cb, data);
-	(void)obs_properties_add_button2(props, "add_fg_button", obs_module_text("Prop_AddFg"),
-					 add_fg_button_cb, data);
-	(void)obs_properties_add_button2(props, "remove_fg_button", obs_module_text("Prop_RemoveFg"),
-					 remove_fg_button_cb, data);
 #endif
 	(void)obs_properties_add_bool(props, SETTING_AUTO_ENABLED, obs_module_text("Prop_AutoEnabled"));
 	obs_property_t *fsprop = obs_properties_add_bool(props, SETTING_ALLOW_FULLSCREEN,
@@ -832,11 +760,11 @@ obs_properties_t *guard_filter_properties(void *data)
 	obs_property_set_long_description(masks_hint, obs_module_text("Prop_MasksInfo"));
 	for (int i = 0; i < GUARD_MAX_MASKS; i++) {
 		char gid[64], key[64], title[128];
-		snprintf(gid, sizeof(gid), "mask_group_%d", i);
+		// Имя группы совпадает с bool-настройкой: чекбокс группы
+		// включает маску, секция сворачивается.
+		snprintf(gid, sizeof(gid), "mask%d_enabled", i);
 		snprintf(title, sizeof(title), "%s %d", obs_module_text("Prop_MaskTitle"), i + 1);
 		obs_properties_t *sub = obs_properties_create();
-		snprintf(key, sizeof(key), "mask%d_enabled", i);
-		(void)obs_properties_add_bool(sub, key, obs_module_text("Prop_MaskEnabled"));
 		snprintf(key, sizeof(key), "mask%d_x", i);
 		(void)obs_properties_add_int(sub, key, obs_module_text("Prop_MaskX"), 0, 100, 1);
 		snprintf(key, sizeof(key), "mask%d_y", i);
@@ -852,7 +780,7 @@ obs_properties_t *guard_filter_properties(void *data)
 		obs_property_list_add_int(mmode, obs_module_text("Prop_MaskMode_Blur"), 1);
 		snprintf(key, sizeof(key), "mask%d_color", i);
 		(void)obs_properties_add_color(sub, key, obs_module_text("Prop_MaskColor"));
-		(void)obs_properties_add_group(props, gid, title, OBS_GROUP_NORMAL, sub);
+		(void)obs_properties_add_group(props, gid, title, OBS_GROUP_CHECKABLE, sub);
 	}
 
 	(void)obs_properties_add_text(props, "section_hotkey", obs_module_text("Prop_SectionHotkey"),
@@ -907,17 +835,8 @@ void guard_filter_tick(void *data, float /*seconds*/)
 			allow_fs = gf->allow_fullscreen;
 			gf_deny = gf->deny_list;
 			pthread_mutex_unlock(&gf->mutex);
-	privacy_guard::FocusQuery q = privacy_guard::query_game_focus(targets, allow_fs, gf_deny);
+			privacy_guard::FocusQuery q = privacy_guard::query_game_focus(targets, allow_fs, gf_deny);
 
-	// Запоминаем последний фокус не на OBS для кнопки "+ Активное окно":
-	// в момент нажатия кнопки фокус всегда на самом диалоге.
-	std::string fgexe = lower_ascii_str(privacy_guard::foreground_exe());
-	if (!fgexe.empty() && fgexe != "obs64.exe" && fgexe != "obs32.exe") {
-		pthread_mutex_lock(&gf->mutex);
-		gf->last_fg_exe = fgexe;
-		gf->last_fg_ns = now_ns;
-		pthread_mutex_unlock(&gf->mutex);
-	}
 			pthread_mutex_lock(&gf->mutex);
 			gf->last_poll_ns = now_ns;
 			guard_apply_focus_locked(gf, q.focused, q.api_ok, q.process_exists, now_ns);
