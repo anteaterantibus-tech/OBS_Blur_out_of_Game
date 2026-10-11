@@ -128,6 +128,14 @@ static bool in_list(const std::vector<std::wstring> &want, const std::wstring &e
 	return false;
 }
 
+// Окна самого OBS (предпросмотр, проектор, студийный режим) игрой
+// не являются никогда: иначе полноэкранный предпросмотр открывал бы
+// шторку сам и давал зеркало на захваченном экране.
+static bool is_obs_exe(const std::wstring &exe_lower)
+{
+	return exe_lower == L"obs64.exe" || exe_lower == L"obs32.exe";
+}
+
 static std::vector<std::wstring> lower_basenames(const std::vector<std::string> &targets)
 {
 	std::vector<std::wstring> want;
@@ -180,7 +188,7 @@ FocusQuery query_game_focus(const std::vector<std::string> &targets, bool allow_
 			q.process_exists = true;
 		}
 	}
-	if (!q.focused && allow_fullscreen && covers_monitor(fg)) {
+	if (!q.focused && allow_fullscreen && !is_obs_exe(fg_exe) && covers_monitor(fg)) {
 		// Чужое полноэкранное окно (игра без вписывания EXE).
 		// Но не из deny-списка: полноэкранное видео браузера
 		// игрой не считается, fail-closed.
@@ -228,6 +236,8 @@ static BOOL CALLBACK visible_enum_cb(HWND hwnd, LPARAM lp)
 		return TRUE;
 	std::wstring exe = process_image_name(pid);
 	if (exe.empty())
+		return TRUE;
+	if (is_obs_exe(exe))
 		return TRUE;
 	if (in_list(*probe->deny, exe))
 		return TRUE;
