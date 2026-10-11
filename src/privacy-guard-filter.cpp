@@ -298,7 +298,7 @@ static bool add_deny_button_cb(obs_properties_t *, obs_property_t *, void *data)
 	std::vector<std::string> names;
 	if (!pick_exe_files(names, "Prop_AddDeny_Title"))
 		return true;
-	add_names_live(gf, SETTING_FULLSCREEN_DENY, ", ", names);
+	add_names_live(gf, SETTING_FULLSCREEN_DENY, NL_SEP, names);
 	return true;
 }
 
@@ -649,7 +649,7 @@ obs_properties_t *guard_filter_properties(void *data)
 	obs_property_set_long_description(fsprop, obs_module_text("Prop_AllowFullscreen_Desc"));
 	obs_property_t *fdeny = obs_properties_add_text(props, SETTING_FULLSCREEN_DENY,
 						      obs_module_text("Prop_FullscreenDeny"),
-						      OBS_TEXT_DEFAULT);
+						      OBS_TEXT_MULTILINE);
 	obs_property_set_long_description(fdeny, obs_module_text("Prop_FullscreenDeny_Desc"));
 #ifdef _WIN32
 	(void)obs_properties_add_button2(props, "add_deny_button", obs_module_text("Prop_AddDeny"),
