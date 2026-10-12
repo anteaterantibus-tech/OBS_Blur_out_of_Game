@@ -106,6 +106,10 @@
 
 21. **Пикселизация (0.8.0)**: сцена мишени с маской blur_kind=1 на правой половине: резкость 15879 слева против 775 справа, профиль яркости показал блоки. Ошибок шейдера в логе нет.
 
+22. **Frontend hotkeys (0.9.0)**: user log proved per-source registration returns -1 for filters (OBS source code confirms: private sources refused). Hotkeys moved to frontend-global, verified in portable log: toggle=0 add=1 remove=2. User confirmed working.
+
+23. **Own binding backup (0.9.3)**: bindings present in basic.ini but rows empty after restart, so the filter now saves/loads its hotkey bindings in scene settings as well. Root cause inside OBS load path not found; bypass is deterministic.
+
 ## NOT RUN (не выполнены)
 
 - Alt+Tab и быстрые переключения туда-обратно (покрыты частично фазами B/C).
