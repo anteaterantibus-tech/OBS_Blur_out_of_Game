@@ -83,3 +83,7 @@ void guard_filter_load(void *data, obs_data_t *settings);
 // Глобальные действия для фронтенд-хоткеев (все инстансы сразу).
 void guard_toggle_all();
 void guard_fg_all(bool add);
+
+// Дублирующее сохранение привязок (см. plugin-main).
+void guard_save_hotkeys(obs_data_t *settings);
+void guard_load_hotkeys(obs_data_t *settings);

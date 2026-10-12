@@ -14,6 +14,46 @@ static obs_hotkey_id hotkey_toggle = OBS_INVALID_HOTKEY_ID;
 static obs_hotkey_id hotkey_add = OBS_INVALID_HOTKEY_ID;
 static obs_hotkey_id hotkey_remove = OBS_INVALID_HOTKEY_ID;
 
+// Дублирующее сохранение привязок в настройки сцены: штатный механизм
+// OBS иногда не возвращает их после рестарта, а здесь восстановление
+// детерминировано чтением собственных данных при создании фильтра.
+static void save_one(obs_data_t *settings, const char *key, obs_hotkey_id id)
+{
+	if (id == OBS_INVALID_HOTKEY_ID)
+		return;
+	obs_data_array_t *arr = obs_hotkey_save(id);
+	if (!arr)
+		return;
+	obs_data_set_array(settings, key, arr);
+	obs_data_array_release(arr);
+}
+
+static void load_one(obs_data_t *settings, const char *key, obs_hotkey_id id)
+{
+	if (id == OBS_INVALID_HOTKEY_ID)
+		return;
+	obs_data_array_t *arr = obs_data_get_array(settings, key);
+	if (!arr)
+		return;
+	if (obs_data_array_count(arr) > 0)
+		obs_hotkey_load(id, arr);
+	obs_data_array_release(arr);
+}
+
+void guard_save_hotkeys(obs_data_t *settings)
+{
+	save_one(settings, "guard_toggle_hk", hotkey_toggle);
+	save_one(settings, "guard_add_hk", hotkey_add);
+	save_one(settings, "guard_remove_hk", hotkey_remove);
+}
+
+void guard_load_hotkeys(obs_data_t *settings)
+{
+	load_one(settings, "guard_toggle_hk", hotkey_toggle);
+	load_one(settings, "guard_add_hk", hotkey_add);
+	load_one(settings, "guard_remove_hk", hotkey_remove);
+}
+
 static void on_toggle_hotkey(void *, obs_hotkey_id, obs_hotkey_t *, bool pressed)
 {
 	if (pressed)
@@ -63,7 +103,7 @@ bool obs_module_load(void)
 	blog(LOG_INFO, "[obs-privacy-guard] hotkeys registered: toggle=%d add=%d remove=%d (invalid=%d)",
 	     (int)hotkey_toggle, (int)hotkey_add, (int)hotkey_remove, (int)OBS_INVALID_HOTKEY_ID);
 
-	blog(LOG_INFO, "[obs-privacy-guard] loaded (version %s)", "0.9.2");
+	blog(LOG_INFO, "[obs-privacy-guard] loaded (version %s)", "0.9.3");
 	return true;
 }
 

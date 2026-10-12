@@ -1096,14 +1096,17 @@ void guard_filter_render(void *data, gs_effect_t * /*effect*/)
 
 void guard_filter_save(void *data, obs_data_t *settings)
 {
-	// Фронтенд-хоткеи сохраняет сам OBS в глобальный конфиг.
+	// Фронтенд-хоткеи сохраняет сам OBS в глобальный конфиг, плюс дубль здесь.
 	(void)data;
-	(void)settings;
+	if (settings)
+		guard_save_hotkeys(settings);
 }
 
 void guard_filter_load(void *data, obs_data_t *settings)
 {
-	// Фронтенд-хоткеи загружает сам OBS из глобального конфига.
+	// Восстановление привязок из дубля: срабатывает раньше любых
+	// штатных механизмов и переживает их сбои.
 	(void)data;
-	(void)settings;
+	if (settings)
+		guard_load_hotkeys(settings);
 }
