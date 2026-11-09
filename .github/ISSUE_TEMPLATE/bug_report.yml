@@ -1,0 +1,62 @@
+name: Bug report
+description: Something is wrong with the filter
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please fill the fields below, it makes the fix much faster.
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      description: From the installer name or the log line "loaded (version ...)"
+      placeholder: 0.9.3
+    validations:
+      required: true
+  - type: input
+    id: obs
+    attributes:
+      label: OBS Studio version
+      placeholder: 32.2.2
+    validations:
+      required: true
+  - type: dropdown
+    id: capture
+    attributes:
+      label: How is the game captured
+      options:
+        - Game Capture
+        - Window Capture
+        - Video Capture Device (card)
+        - Display Capture
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: cover
+    attributes:
+      label: Cover type
+      options:
+        - Gaussian blur
+        - Pixelation
+        - Opaque cover
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens and what you expected
+      description: Also mention whether the recording matches the OBS preview.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log lines
+      description: |
+        Attach or paste the lines starting with [obs-privacy-guard] from
+        %APPDATA%\obs-studio\logs (newest file). They contain no window contents.
+      render: text
+    validations:
+      required: false
